@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "yourname.hello",
+  "name": "Hello",
+  "version": "0.1.0",
+  "author": "Your Name",
+  "description": "Bar widget that shows a label and runs a command when you click it",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Hello",
+    "description": "Bar widget that shows a label and runs a command when you click it",
+    "category": "Plugin",
+    "allowMultiple": true,
+    "defaultSection": "center",
+    "defaults": {
+      "label": "Hello",
+      "tooltip": "Omarchy plugin template",
+      "onClick": ""
+    },
+    "schema": [
+      {
+        "key": "label",
+        "type": "string",
+        "label": "Label",
+        "description": "Text that the widget shows in the bar.",
+        "defaultValue": "Hello"
+      },
+      {
+        "key": "tooltip",
+        "type": "string",
+        "label": "Tooltip",
+        "description": "Text that the bar shows when the pointer rests on the widget.",
+        "defaultValue": "Omarchy plugin template"
+      },
+      {
+        "key": "onClick",
+        "type": "string",
+        "label": "Click command",
+        "description": "Command that the shell runs on a left click.",
+        "defaultValue": ""
+      }
+    ]
+  }
+}

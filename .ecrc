@@ -1,0 +1,5 @@
+{
+  "Exclude": ["^\\.git/", "^\\.claude/", "^\\.agents/", "^LICENSE$"],
+  "Verbose": false,
+  "IgnoreDefaults": false
+}

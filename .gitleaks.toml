@@ -1,0 +1,4 @@
+title = "Omarchy plugin template"
+
+[extend]
+useDefault = true

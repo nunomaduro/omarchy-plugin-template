@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+QT_BIN=/usr/lib/qt6/bin
+
+cd "$ROOT"
+
+QT_HINT="Install it with: omarchy pkg add qt6-declarative"
+PKG_HINT="Install it with: omarchy pkg add"
+SHELLCHECK_HINT="Arch has no aarch64 package. Take the binary from https://github.com/koalaman/shellcheck/releases and put it on PATH."
+OMARCHY_HINT="Install Omarchy, or put the bin directory of https://github.com/basecamp/omarchy on PATH."
+
+require() {
+  local name="$1"
+  local hint="$2"
+  local path
+  path=$(command -v "$name" 2>/dev/null || true)
+  if [[ -z $path && -x "$QT_BIN/$name" ]]; then
+    path="$QT_BIN/$name"
+  fi
+  if [[ -z $path ]]; then
+    echo "bin/test: $name is absent. $hint" >&2
+    return 1
+  fi
+  printf '%s\n' "$path"
+}
+
+QMLLINT=$(require qmllint "$QT_HINT")
+QMLFORMAT=$(require qmlformat "$QT_HINT")
+QMLTESTRUNNER=$(require qmltestrunner "$QT_HINT")
+VALIDATE=$(require omarchy-plugin-validate "$OMARCHY_HINT")
+SHELLCHECK=$(require shellcheck "$SHELLCHECK_HINT")
+SHFMT=$(require shfmt "$PKG_HINT shfmt")
+ACTIONLINT=$(require actionlint "$PKG_HINT actionlint")
+YAMLLINT=$(require yamllint "$PKG_HINT yamllint")
+MARKDOWNLINT=$(require markdownlint-cli2 "$PKG_HINT markdownlint-cli2")
+ECHECKER=$(require editorconfig-checker "$PKG_HINT editorconfig-checker")
+TYPOS=$(require typos "$PKG_HINT typos")
+GITLEAKS=$(require gitleaks "$PKG_HINT gitleaks")
+JQ=$(require jq "$PKG_HINT jq")
+
+mapfile -t QML_FILES < <(find . -path ./.git -prune -o -name '*.qml' -print | sort)
+mapfile -t WIDGET_FILES < <(find . -path ./.git -prune -o -path ./tests -prune -o -name '*.qml' -print | sort)
+mapfile -t SH_FILES < <(find bin -type f -print | sort)
+mapfile -t YAML_FILES < <(find . -path ./.git -prune -o \( -name '*.yml' -o -name '*.yaml' \) -print | sort)
+
+step() {
+  echo
+  echo "== $1"
+}
+
+step "Validate the manifest"
+"$VALIDATE" "$ROOT"
+"$JQ" -e '.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")' manifest.json >/dev/null ||
+  { echo "bin/test: version in manifest.json is not a semantic version" >&2; exit 1; }
+"$JQ" --indent 2 . manifest.json | diff -u --label manifest.json --label "manifest.json (formatted)" manifest.json - ||
+  { echo "bin/test: manifest.json is not formatted. Format it with: bin/format" >&2; exit 1; }
+echo "manifest.json obeys the Omarchy plugin schema"
+
+step "Compare the settings of the manifest with the settings that the QML reads"
+declared=$("$JQ" -r '[(.barWidget.defaults // {} | keys[]), (.barWidget.schema // [] | .[].key)] | unique | .[]' manifest.json)
+read_by_qml=$(grep -hoE 'setting\("[^"]+"' "${WIDGET_FILES[@]}" | sed -E 's/^setting\("//; s/"$//' | sort -u)
+diff -u --label "manifest.json declares" --label "the QML reads" <(printf '%s\n' "$declared") <(printf '%s\n' "$read_by_qml") ||
+  { echo "bin/test: the manifest and the QML disagree. Declare each setting in manifest.json and read it with setting(\"<key>\", <fallback>)." >&2; exit 1; }
+echo "$(printf '%s\n' "$declared" | grep -c .) settings are declared and read"
+
+step "Lint the QML"
+"$QMLLINT" "${QML_FILES[@]}"
+echo "${#QML_FILES[@]} QML files pass qmllint"
+
+step "Check the format of the QML"
+unformatted=0
+for file in "${QML_FILES[@]}"; do
+  "$QMLFORMAT" "$file" | diff -u --label "$file" --label "$file (formatted)" "$file" - || unformatted=1
+done
+((unformatted == 0)) ||
+  { echo "bin/test: the QML above is not formatted. Format it with: bin/format" >&2; exit 1; }
+echo "${#QML_FILES[@]} QML files match qmlformat"
+
+step "Analyse the bash"
+"$SHELLCHECK" --severity=style --enable=all --shell=bash "${SH_FILES[@]}"
+"$SHFMT" --diff --language-dialect bash --indent 2 --case-indent --space-redirects "${SH_FILES[@]}"
+echo "${#SH_FILES[@]} bash files pass shellcheck and match shfmt"
+
+step "Lint the workflows"
+"$ACTIONLINT"
+"$YAMLLINT" --strict "${YAML_FILES[@]}"
+echo "${#YAML_FILES[@]} YAML files pass actionlint and yamllint"
+
+step "Lint the Markdown"
+"$MARKDOWNLINT"
+
+step "Check the whitespace, the spelling and the secrets"
+"$ECHECKER"
+"$TYPOS"
+"$GITLEAKS" dir --no-banner --redact .
+echo "the files obey .editorconfig, hold no typo and hold no secret"
+
+step "Run the tests"
+QT_QPA_PLATFORM=offscreen "$QMLTESTRUNNER" -input "$ROOT/tests"

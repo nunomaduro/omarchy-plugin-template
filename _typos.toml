@@ -1,0 +1,5 @@
+[files]
+extend-exclude = [".git/", ".claude/", ".agents/"]
+
+[default.extend-words]
+hod = "hod"

@@ -1,0 +1,42 @@
+---
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install the dependencies
+        run: >
+          pacman -Syu --noconfirm
+          actionlint editorconfig-checker git gitleaks jq markdownlint-cli2
+          qt6-declarative shellcheck shfmt typos yamllint
+
+      - name: Check out the plugin
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Check out Omarchy for its plugin validator
+        run: git clone --depth 1 https://github.com/basecamp/omarchy.git /opt/omarchy
+
+      - name: Put the Omarchy commands on PATH
+        run: echo /opt/omarchy/bin >>"$GITHUB_PATH"
+
+      - name: Mark the checkout as a safe git directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Run the checks
+        run: bin/test

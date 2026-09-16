@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+QT_BIN=/usr/lib/qt6/bin
+
+cd "$ROOT"
+
+require() {
+  local name="$1"
+  local hint="$2"
+  local path
+  path=$(command -v "$name" 2>/dev/null || true)
+  if [[ -z $path && -x "$QT_BIN/$name" ]]; then
+    path="$QT_BIN/$name"
+  fi
+  if [[ -z $path ]]; then
+    echo "bin/format: $name is absent. $hint" >&2
+    return 1
+  fi
+  printf '%s\n' "$path"
+}
+
+QMLFORMAT=$(require qmlformat "Install it with: omarchy pkg add qt6-declarative")
+SHFMT=$(require shfmt "Install it with: omarchy pkg add shfmt")
+MARKDOWNLINT=$(require markdownlint-cli2 "Install it with: omarchy pkg add markdownlint-cli2")
+JQ=$(require jq "Install it with: omarchy pkg add jq")
+
+mapfile -t QML_FILES < <(find . -path ./.git -prune -o -name '*.qml' -print | sort)
+mapfile -t SH_FILES < <(find bin -type f -print | sort)
+
+"$QMLFORMAT" --inplace "${QML_FILES[@]}"
+"$SHFMT" --write --language-dialect bash --indent 2 --case-indent --space-redirects "${SH_FILES[@]}"
+"$JQ" --indent 2 . manifest.json >manifest.json.formatted
+mv manifest.json.formatted manifest.json
+MARKDOWNLINT_FIX=1 "$MARKDOWNLINT" --fix || true
+
+echo "Formatted ${#QML_FILES[@]} QML files, ${#SH_FILES[@]} bash files, manifest.json and the Markdown"
